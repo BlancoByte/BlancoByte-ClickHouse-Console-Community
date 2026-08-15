@@ -9,9 +9,9 @@ is written to a PostgreSQL metadata database (recommended on a separate
 server), and session management is handled by Redis.
 
 ---
-<img width="1324" height="829" alt="Screenshot 2026-08-15 at 13 25 23" src="https://github.com/user-attachments/assets/7e897fb7-33d5-493d-86ff-9907eb9df266" />
+<img width="696" height="654" alt="Screenshot 2026-08-15 at 13 24 46" src="https://github.com/user-attachments/assets/dfef07ab-2b55-4ad7-b4b1-8bfbd15cc6b6" />
 
-<img width="696" height="654" alt="Screenshot 2026-08-15 at 13 24 46" src="https://github.com/user-attachments/assets/82425fa5-bf23-4bcf-9230-d27015a7ee34" />
+<img width="1324" height="829" alt="Screenshot 2026-08-15 at 13 25 23" src="https://github.com/user-attachments/assets/ba0e638f-44d7-41e1-93c2-2c0f581d9f7a" />
 
 
 ## Community vs Enterprise
@@ -31,11 +31,11 @@ licensing, contact **support@blancobyte.com**.
 | Component | Minimum | Notes |
 |---|---|---|
 | OS | Linux x86_64 (Ubuntu 22.04+, RHEL 8+, Debian 12+) | macOS for local testing only |
-| Python | 3.10 or newer | |
+| Python | 3.10 or newer | With `venv` module (`python3-venv` on Debian/Ubuntu) |
 | PostgreSQL | 14 or newer | Metadata store: users, audit, connections, per-user query history / favorites / encrypted credentials. Separate server recommended. |
 | Redis | 6 or newer | Session store. AOF persistence recommended. |
 | ClickHouse | Any supported version | Must have system tables enabled (`query_log`, `processes`, etc.) |
-| Network | Outbound TCP to ClickHouse (8123/9000), PostgreSQL (5432), Redis (6379) | |
+| Network | Outbound TCP to ClickHouse (8123/9000), PostgreSQL (5432), Redis (6379) | Inbound TCP from end users |
 
 ---
 
@@ -49,7 +49,6 @@ licensing, contact **support@blancobyte.com**.
 # Ubuntu/Debian
 sudo apt update && sudo apt install -y postgresql
 
-# Create the database and user
 sudo -u postgres psql <<'SQL'
 CREATE DATABASE chconsole;
 CREATE USER chconsole WITH ENCRYPTED PASSWORD 'change-me-strong-password';
@@ -60,36 +59,40 @@ SQL
 **Redis** (session store):
 
 ```bash
-# Ubuntu/Debian
 sudo apt install -y redis-server
 sudo systemctl enable --now redis-server
-
-# (Recommended) set a password in /etc/redis/redis.conf:
-#   requirepass your-redis-password
+# (Recommended) set "requirepass your-redis-password" in /etc/redis/redis.conf,
 # then: sudo systemctl restart redis-server
 ```
 
-### 2. Get the application and install dependencies
+### 2. Get the application
 
 ```bash
 git clone https://github.com/BlancoByte/BlancoByte-ClickHouse-Console-Community.git
 cd BlancoByte-ClickHouse-Console-Community
-
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
 ```
 
-### 3. Configure PostgreSQL, Redis, and the master key
+### 3. Run the installer
 
-Configuration is provided through **environment variables**. Copy the example
-file and edit it:
+`install.sh` creates a Python virtualenv (`.venv/`), installs all dependencies,
+and generates helper scripts (`run.sh`, `run-prod.sh`, `admin.sh`, `logtail.sh`):
 
 ```bash
-cp .env.example .env
+chmod +x install.sh
+./install.sh
 ```
 
-Edit **`.env`** with your PostgreSQL and Redis details:
+### 4. Configure PostgreSQL, Redis, and the master key
+
+Create a file named **`.env` in the project root directory** — the same folder
+as `app.py` and `run-prod.sh`. This is the single file where all connection
+parameters go; `run-prod.sh` loads it automatically on startup.
+
+```bash
+cp .env.example .env    # then edit .env
+```
+
+Put your PostgreSQL and Redis details into **`.env`**:
 
 ```bash
 # ── PostgreSQL (metadata store) ──
@@ -106,42 +109,66 @@ REDIS_PASSWORD=          # set if you configured requirepass
 REDIS_DB=0
 
 # ── Master key — encrypts stored ClickHouse credentials ──
-# Generate one with:  python -c "import secrets; print(secrets.token_urlsafe(48))"
+# Generate one with:  python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 MASTER_KEY=paste-a-long-random-value-here
 ```
 
-> The `.env` file holds secrets — it is already listed in `.gitignore` and must
-> never be committed.
+> **Where does `.env` live?** In the project root, next to `app.py`. It holds
+> secrets, is already in `.gitignore`, and must never be committed.
+>
+> `run-prod.sh` sources `.env` automatically. For a **dev** start with `./run.sh`,
+> load it manually first: `set -a; source .env; set +a`. Under **systemd**, point
+> `EnvironmentFile=` at this `.env` (see `deploy/` and `INSTALLATION.md`).
 
-Load the variables before running (or use a process manager that reads `.env`):
+### 5. Create the first administrator
+
+There is **no default account** — create the first admin explicitly with the
+`admin.sh` helper:
+
+```bash
+./admin.sh create-user admin --role admin --password 'admin123'
+```
+
+This creates user `admin` with password `admin123`. **Log in and change this
+password immediately** from **My Profile → account & password**. You can then
+create up to 3 total users (Community limit) under **Security → Users**.
+
+Other CLI helpers:
+
+```bash
+./admin.sh list-users                             # list console users
+./admin.sh create-user alice --role developer     # add a user
+./admin.sh reset-password admin                    # reset a password
+```
+
+### 6. Run
+
+**Development** (Flask, http://localhost:5000):
 
 ```bash
 set -a; source .env; set +a
+./run.sh
 ```
 
-### 4. Create the first administrator
-
-There is **no default account** — you create the first admin explicitly:
+**Production** (gunicorn, loads `.env` automatically):
 
 ```bash
-python app.py create-user admin --role admin --password 'admin123'
+./run-prod.sh
 ```
 
-This creates a user `admin` with the password `admin123`. **Log in and change
-this password immediately** from **My Profile → account & password**. You can
-then create up to 3 total users (Community limit) under **Security → Users**.
+Put nginx with TLS in front for production. For a hardened systemd + nginx
+setup, see the `deploy/` directory and `INSTALLATION.md`.
 
-### 5. Run
+### Updating to a newer version
+
+`update.sh` performs a safe in-place upgrade from a release zip: it snapshots
+the current install, replaces only code files, validates them, and restarts —
+rolling back on failure. Your `data/`, keys, TLS certs, and `.env` are never
+overwritten.
 
 ```bash
-python app.py
+./update.sh /path/to/blancobyte-clickhouse-console-X.Y.zip [/path/to/install]
 ```
-
-The console is served on **http://0.0.0.0:5000**. Open it in a browser and log
-in with the admin account you created.
-
-For production, run behind **gunicorn** + a reverse proxy (nginx) with TLS. See
-the `deploy/` directory and `INSTALLATION.md` for a hardened setup.
 
 ---
 
@@ -151,7 +178,7 @@ Access is role-based and enforced on the server for every endpoint:
 
 - **Admin** — full access to all panels and actions, including user management.
 - **Developer** — run queries (read & write), kill jobs, monitor, browse schema.
-- **Monitoring** — monitoring, cluster, dashboards, user cost, storage (read).
+- **Monitoring** — monitoring, cluster, dashboards, user cost, and storage (read).
 - **Read-only** — view-only access to query, monitor, schema, dashboards, storage.
 
 ---
