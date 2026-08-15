@@ -890,15 +890,35 @@ def migrate_legacy_users():
                 logger.warning(f"Legacy user migration failed: {e}")
                 try: conn.rollback()
                 except Exception: pass
-        # No automatic admin seeding. The first administrator must be created
-        # explicitly via the CLI:
-        #   python app.py create-user <username> --role admin --password '...'
+        # First-run bootstrap: if no users exist yet, seed a default admin
+        # (admin / admin123) so a fresh Community install can log in
+        # immediately. The password is stored using the same pbkdf2 hash as
+        # the CLI, and the operator is told (loudly) to change it at once.
+        # Set CHC_NO_DEFAULT_ADMIN=1 to skip this and create the first admin
+        # manually via `python app.py create-user ...`.
         cur2 = conn.execute("SELECT count(*) FROM users").fetchone()
         if cur2[0] == 0:
-            logger.warning("="*60)
-            logger.warning("No users exist. Create the first admin with:")
-            logger.warning(f"  python {Path(__file__).name} create-user <username> --role admin --password '<password>'")
-            logger.warning("="*60)
+            if os.environ.get("CHC_NO_DEFAULT_ADMIN") == "1":
+                logger.warning("="*60)
+                logger.warning("No users exist. Create the first admin with:")
+                logger.warning(f"  python {Path(__file__).name} create-user <username> --role admin --password '<password>'")
+                logger.warning("="*60)
+            else:
+                try:
+                    conn.execute("INSERT INTO users(username,email,password_hash,role) VALUES(?,?,?,?)",
+                                 ("admin", "", hash_password("admin123"), "admin"))
+                    conn.commit()
+                    try: _init_user_db("admin")
+                    except Exception: pass
+                    logger.warning("="*60)
+                    logger.warning("Seeded default administrator:  admin / admin123")
+                    logger.warning("CHANGE THIS PASSWORD IMMEDIATELY after first login")
+                    logger.warning("(My Profile -> account & password).")
+                    logger.warning("="*60)
+                except Exception as e:
+                    try: conn.rollback()
+                    except Exception: pass
+                    logger.warning(f"Default admin seeding failed: {e}")
     finally:
         # A bare SELECT under autocommit=False leaves the connection in
         # INTRANS state. Roll back any read-only txn before put-back so the

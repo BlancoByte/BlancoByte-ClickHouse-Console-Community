@@ -103,5 +103,6 @@ echo "  ./logtail.sh             → Tail application log"
 echo "  ./monitor.sh / ./schema.sh   → CLI tools"
 echo
 echo "Default login (CHANGE IMMEDIATELY):"
-echo "  username: admin   password: admin"
+echo "  username: admin   password: admin123"
+echo "  (change it immediately after first login)"
 echo
