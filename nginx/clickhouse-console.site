@@ -1,0 +1,65 @@
+# clickhouse-console.site — nginx reverse proxy + TLS (Phase 3, bare-metal).
+#
+# This is the BARE-METAL site config. It is distinct from nginx/nginx.conf,
+# which is the full nginx.conf used by the Docker compose stack
+# (proxy_pass http://app:5000). Here we proxy to the local gunicorn on
+# 127.0.0.1:5000.
+#
+# Install:
+#   sudo cp nginx/clickhouse-console.site /etc/nginx/sites-available/clickhouse-console
+#   sudo ln -s /etc/nginx/sites-available/clickhouse-console /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+# deploy/install.sh does this for you and generates a self-signed cert.
+#
+# server_name is '_' (catch-all) so it works by IP or any hostname. If this
+# console has a real DNS name, set it here and reissue the certificate with
+# a matching CN/SAN.
+
+# WebSocket upgrade map (future-proofing; harmless if unused).
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# Plain HTTP → permanent redirect to HTTPS.
+server {
+    listen 80;
+    server_name _;
+    location / { return 301 https://$host$request_uri; }
+}
+
+server {
+    listen 443 ssl http2;
+    server_name _;
+
+    # Self-signed by default (see deploy/install.sh). Replace with an
+    # internal-CA or public cert by swapping these two files.
+    ssl_certificate     /etc/ssl/clickhouse-console/server.crt;
+    ssl_certificate_key /etc/ssl/clickhouse-console/server.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_cache   shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    # Security headers.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    client_max_body_size 50m;
+
+    location / {
+        proxy_pass         http://127.0.0.1:5000;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto https;
+        proxy_set_header   Upgrade           $http_upgrade;
+        proxy_set_header   Connection        $connection_upgrade;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+}

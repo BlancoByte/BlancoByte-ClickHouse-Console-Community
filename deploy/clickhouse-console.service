@@ -1,0 +1,54 @@
+# clickhouse-console.service — systemd unit (Phase 3).
+#
+# Install:
+#   sudo cp deploy/clickhouse-console.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now clickhouse-console
+#
+# Assumes the Phase 3 bare-metal layout:
+#   - install root : /opt/clickhouse-console
+#   - service user : chconsole  (unprivileged, no login shell)
+#   - virtualenv   : /opt/clickhouse-console/.venv
+#   - env file     : /opt/clickhouse-console/.env  (DB_*, REDIS_*, MASTER_KEY, ...)
+#   - logs         : /var/log/clickhouse-console/
+# deploy/install.sh sets all of this up for you.
+
+[Unit]
+Description=BlancoByte ClickHouse Console
+Documentation=file:/opt/clickhouse-console/INSTALLATION.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=chconsole
+Group=chconsole
+WorkingDirectory=/opt/clickhouse-console
+EnvironmentFile=/opt/clickhouse-console/.env
+
+# gunicorn (via run-prod.sh) — NOT the Flask dev server. Worker/thread
+# counts come from GUNICORN_WORKERS / GUNICORN_THREADS in the .env file.
+ExecStart=/opt/clickhouse-console/run-prod.sh
+
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+
+# ── Hardening ─────────────────────────────────────────────────────────
+# The service runs unprivileged and can only write to its own data/log
+# directories. Everything else on the filesystem is read-only to it.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/clickhouse-console/data /opt/clickhouse-console/logs /var/log/clickhouse-console
+
+StandardOutput=append:/var/log/clickhouse-console/console.log
+StandardError=append:/var/log/clickhouse-console/console.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,48 @@
+name: CI
+
+# Runs the same validation gate that used to be manual, on every push/PR,
+# so syntax/structure regressions are caught before a release is bundled.
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install lint tools (optional)
+        run: pip install pyflakes || true
+
+      - name: Validate (Python + JS syntax)
+        run: |
+          chmod +x scripts/validate.sh
+          ./scripts/validate.sh
+
+  # --- Scaffold for the next round: real unit + E2E tests --------------------
+  # Enable once a disposable Postgres/Redis + a test ClickHouse are wired up
+  # in services: below. Left non-blocking so it doesn't gate today's builds.
+  #
+  # tests:
+  #   runs-on: ubuntu-latest
+  #   services:
+  #     postgres: { image: postgres:16, env: { POSTGRES_PASSWORD: test }, ports: ["5432:5432"] }
+  #     redis:    { image: redis:7, ports: ["6379:6379"] }
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - run: pip install -r requirements.txt pytest playwright
+  #     - run: pytest tests/            # backend unit tests
+  #     - run: playwright install --with-deps chromium
+  #     - run: pytest tests/e2e/        # login → query → result → export

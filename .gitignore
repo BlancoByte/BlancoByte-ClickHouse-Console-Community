@@ -1,0 +1,28 @@
+# Secrets & instance state — never commit
+data/
+*.lic
+*.pem
+*.key
+master.key
+instance.id
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# Logs & runtime
+logs/
+*.log
+
+# Build/minified artefact (generated at deploy)
+static/index.min.html
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/

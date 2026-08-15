@@ -1,0 +1,25 @@
+flask>=2.3
+clickhouse-connect>=0.7
+clickhouse-driver>=0.2
+rich>=13.0
+boto3>=1.26
+click>=8.1
+# Production WSGI server (recommended for >1 concurrent user)
+gunicorn>=21.0
+# Credential vault (Step 4) and license signing (Step 5)
+cryptography>=41.0
+# v4: Postgres backend (replaces SQLite)
+psycopg[binary]>=3.1
+psycopg_pool>=3.2
+# Phase 2: Redis-backed sessions (replaces the Postgres `sessions` table)
+redis>=5.0
+# Phase 4z-k: LDAP / Active Directory authentication. Pure Python — no
+# native C library compilation step, so install works on every supported
+# distro including minimal Alpine variants.
+ldap3>=2.9
+# Phase 4z-n: cron expression parsing for backup scheduling. Pure Python.
+croniter>=1.3
+# Postgres schema migrations (versioned, deploy-time `alembic upgrade head`).
+# alembic pulls in SQLAlchemy; we use the psycopg (v3) driver already present.
+alembic>=1.13
+SQLAlchemy>=2.0

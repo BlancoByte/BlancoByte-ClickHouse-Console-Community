@@ -1,0 +1,56 @@
+version: "3.8"
+
+# ClickHouse Console v4 — Postgres backend.
+#
+# Postgres is NOT bundled in this compose. Bring your own:
+#   - Managed service (RDS, Cloud SQL, etc.), or
+#   - An existing internal Postgres cluster, or
+#   - A separate container/VM you operate.
+#
+# Configure the DB connection via .env (DB_HOST, DB_PORT, DB_USER, DB_PASSWORD,
+# DB_NAME, DB_POOL_MIN, DB_POOL_MAX). See INSTALLATION.md §4.2.
+
+services:
+  app:
+    build: .
+    image: clickhouse-console:latest
+    restart: unless-stopped
+    environment:
+      # ── PostgreSQL ─────────────────────────────────────────────
+      DB_HOST:       ${DB_HOST}
+      DB_PORT:       ${DB_PORT:-5432}
+      DB_USER:       ${DB_USER}
+      DB_PASSWORD:   ${DB_PASSWORD}
+      DB_NAME:       ${DB_NAME}
+      DB_POOL_MIN:   ${DB_POOL_MIN:-2}
+      DB_POOL_MAX:   ${DB_POOL_MAX:-20}
+      # ── Redis (Phase 2: session store, replaces the Postgres `sessions`
+      #    table). Bring your own Redis, same as Postgres. AOF persistence
+      #    recommended. ──────────────────────────────────────────────────
+      REDIS_HOST:       ${REDIS_HOST}
+      REDIS_PORT:       ${REDIS_PORT:-6379}
+      REDIS_PASSWORD:   ${REDIS_PASSWORD}
+      REDIS_DB:         ${REDIS_DB:-0}
+      # ── Console secrets ────────────────────────────────────────
+      LICENSE_FILE:     /app/data/license.lic
+      MASTER_KEY:       ${MASTER_KEY}        # required for credential vault
+      SESSION_TTL_DAYS: "${SESSION_TTL_DAYS:-7}"
+    volumes:
+      - app_data:/app/data                   # install-level secrets + activity logs
+      - ./logs:/app/logs                     # optional: surface logs to host
+    expose:
+      - "5000"
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+
+volumes:
+  app_data:
