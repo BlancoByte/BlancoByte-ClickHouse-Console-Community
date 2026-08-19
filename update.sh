@@ -181,10 +181,15 @@ if ! python3 -c "import ast; ast.parse(open('$INSTALL_DIR/app.py').read())" 2>&1
     echo "ERROR: app.py syntax check failed"
     rollback
 fi
-# Quick import test (catches missing dependencies)
-if ! ( cd "$INSTALL_DIR" && python3 -c "import app" 2>&1 ); then
-    echo "ERROR: app.py import test failed (missing Python dependencies?)"
-    echo "       Run: pip install --break-system-packages -r requirements.txt"
+# Quick import test (catches missing dependencies). app.py connects to the
+# DB at import time, so load .env first and use the install's venv python if
+# one exists — otherwise a correct .env still fails the check.
+PYBIN="python3"
+[ -x "$INSTALL_DIR/.venv/bin/python" ] && PYBIN="$INSTALL_DIR/.venv/bin/python"
+if ! ( cd "$INSTALL_DIR" && set -a && [ -f .env ] && . ./.env; set +a; "$PYBIN" -c "import app" 2>&1 ); then
+    echo "ERROR: app.py import test failed (missing deps or bad .env?)"
+    echo "       Try: $PYBIN -m pip install -r requirements.txt"
+    echo "       And check DB_* / REDIS_* values in $INSTALL_DIR/.env"
     rollback
 fi
 echo "      Syntax OK, imports OK"
@@ -192,7 +197,7 @@ echo "      Syntax OK, imports OK"
 # ─── 6. Start server ──────────────────────────────────────────────────────
 echo "[6/6] Starting server..."
 cd "$INSTALL_DIR"
-nohup python3 app.py > console.log 2>&1 &
+nohup "$PYBIN" app.py > console.log 2>&1 &
 NEW_PID=$!
 sleep 4
 

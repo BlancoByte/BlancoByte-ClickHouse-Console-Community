@@ -9,10 +9,6 @@ is written to a PostgreSQL metadata database (recommended on a separate
 server), and session management is handled by Redis.
 
 ---
-<img width="696" height="654" alt="Screenshot 2026-08-15 at 13 24 46" src="https://github.com/user-attachments/assets/46b76bb3-64a1-4e0d-8099-fdd27da28bcd" />
-
-<img width="1324" height="829" alt="Screenshot 2026-08-15 at 13 25 23" src="https://github.com/user-attachments/assets/25950329-6f69-4056-b02d-a0249f1ac1dd" />
-
 
 ## Community vs Enterprise
 
@@ -51,9 +47,21 @@ sudo apt update && sudo apt install -y postgresql
 
 sudo -u postgres psql <<'SQL'
 CREATE DATABASE chconsole;
-CREATE USER chconsole WITH ENCRYPTED PASSWORD 'change-me-strong-password';
-GRANT ALL PRIVILEGES ON DATABASE chconsole TO chconsole;
+CREATE ROLE chconsole WITH LOGIN PASSWORD 'change-me-strong-password';
+ALTER DATABASE chconsole OWNER TO chconsole;
 SQL
+```
+
+If PostgreSQL runs on a **separate server** from the application, allow the app
+host in `pg_hba.conf` (find it with `SHOW hba_file;`) and reload:
+
+```
+# /etc/postgresql/<ver>/main/pg_hba.conf  — add one line:
+host    chconsole    chconsole    <app-server-ip>/32    scram-sha-256
+```
+
+```bash
+sudo systemctl reload postgresql
 ```
 
 **Redis** (session store):
@@ -75,36 +83,40 @@ cd BlancoByte-ClickHouse-Console-Community
 ### 3. Configure PostgreSQL, Redis, and the master key
 
 The repository ships a template named **`.env.example`**. Copy it to **`.env`**
-in the project root (the same folder as `app.py`) and fill in your values. This
-`.env` file is where all connection parameters go.
+in the project root (the same folder as `app.py`) and fill in your values. All
+connection parameters live in this single file.
 
 > `.env` and `.env.example` are **dotfiles** (names starting with a `.`), so
-> they are hidden by default in Finder — press `Cmd+Shift+.` to show them, or
-> use `ls -la` in a terminal. `.env` is not committed to git (it holds secrets).
+> they are hidden by default in macOS Finder — press `Cmd+Shift+.` to show them,
+> or use `ls -la`. `.env` is not committed to git (it holds secrets).
 
 ```bash
 cp .env.example .env
 ```
 
-Edit **`.env`**:
+Edit **`.env`** — the application reads **separate `DB_*` variables** (not a
+single `DATABASE_URL`):
 
 ```bash
 # ── PostgreSQL (metadata store) ──
-DB_HOST=127.0.0.1
+DB_HOST=127.0.0.1          # or the Postgres server IP
 DB_PORT=5432
 DB_NAME=chconsole
 DB_USER=chconsole
 DB_PASSWORD=change-me-strong-password
 
 # ── Redis (session store) ──
-REDIS_HOST=127.0.0.1
+REDIS_HOST=127.0.0.1       # or the Redis server IP
 REDIS_PORT=6379
-REDIS_PASSWORD=          # set if you configured requirepass
+REDIS_PASSWORD=            # set if you configured requirepass
 REDIS_DB=0
 
 # ── Master key — encrypts stored ClickHouse credentials ──
 # Generate one with:  python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 MASTER_KEY=paste-a-long-random-value-here
+
+# ── Optional: listen port (default 5000) ──
+# PORT=5000
 ```
 
 ### 4. Run the installer
@@ -119,10 +131,17 @@ chmod +x install.sh
 
 ### 5. Start the server
 
-`run-prod.sh` loads `.env` automatically and starts the server on port 5000:
+`run-prod.sh` loads `.env` automatically and starts the server:
 
 ```bash
 ./run-prod.sh
+```
+
+To run on a different port, set `PORT` (useful when testing alongside another
+instance):
+
+```bash
+PORT=5050 ./run-prod.sh
 ```
 
 ### 6. Log in
@@ -131,12 +150,50 @@ Open the console in a browser and log in with the default administrator:
 username: admin
 password: admin123
 
+
 **Change this password immediately after first login** from
 **My Profile → account & password**. You can then create up to 3 total users
 (Community limit) under **Security → Users**.
 
 For production, run behind nginx with TLS (a systemd unit reading
 `EnvironmentFile=.../.env` is provided). See `deploy/` and `INSTALLATION.md`.
+
+---
+
+## Checking the version
+
+The running build is printed in the startup banner (`Build: ...`) and can be
+queried without starting the server:
+
+```bash
+python3 app.py --version
+# BlancoByte ClickHouse Console v4.0 (build community-YYYY.MM.DD)
+```
+
+---
+
+## Updating to a newer version
+
+`update.sh` performs a safe **in-place** upgrade from a release zip. It
+snapshots the current install, replaces only code files, validates the new
+code **against your live `.env`**, and restarts — **rolling back automatically
+on any failure**. Your `.env`, `data/` (including the master key), TLS
+certificates, and the existing `nginx` config are preserved and never
+overwritten.
+
+```bash
+# 1. Copy the new release zip onto the server (e.g. into /tmp)
+# 2. Run update.sh with: <zip path> <install dir>
+cd /opt/clickhouse-console
+sudo ./update.sh /tmp/blancobyte-clickhouse-console-community.zip /opt/clickhouse-console
+```
+
+After the update, confirm the new build and restart if you run under systemd:
+
+```bash
+python3 app.py --version
+sudo systemctl restart clickhouse-console
+```
 
 ---
 

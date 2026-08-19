@@ -7,6 +7,12 @@ from flask import Flask, jsonify, request, send_from_directory, send_file
 import zipfile, io, csv
 
 APP_DIR    = Path(__file__).parent.resolve()
+
+# Product + build version. Bump BUILD on every packaged release so the
+# running instance can be identified from the banner and `--version`.
+APP_VERSION = "4.0"
+BUILD_VERSION = "community-2026.08.19"   # community build date/tag
+
 STATIC_DIR = APP_DIR / "static"
 LOG_DIR        = APP_DIR / "logs"
 LOG_GLOBAL_DIR = LOG_DIR / "global"
@@ -10385,6 +10391,9 @@ if __name__=="__main__":
     #   python app.py reset-password <username>
     #   python app.py list-users
     #   python app.py set-role <username> <role>
+    if len(sys.argv) >= 2 and sys.argv[1] in ("--version","-v","version"):
+        print(f"BlancoByte ClickHouse Console v{APP_VERSION} (build {BUILD_VERSION})")
+        sys.exit(0)
     if len(sys.argv) >= 2 and sys.argv[1] in ("create-user","reset-password","list-users","set-role","delete-user","export-audit","list-logs","read-log","migrate-logs"):
         import getpass, argparse
         cmd = sys.argv[1]
@@ -10815,15 +10824,18 @@ if __name__=="__main__":
     logger.info("BlancoByte ClickHouse Console v4.0 starting")
     logger.info(f"Log:     {LOG_DIR} (monthly rotation, prior months gzipped)")
     logger.info(f"DB:      {_db_summary}")
+    logger.info(f"Build:   {BUILD_VERSION}")
     logger.info(f"License: {LICENSE['mode']} ({LICENSE['customer'] or '-'})")
     logger.info(f"SSO:     {'enabled (oidc)' if oidc_enabled() else 'disabled'}")
     logger.info(f"Vault:   {'available' if MASTER_KEY else 'disabled'}")
     logger.info("="*50)
+    _port = int(os.environ.get("PORT", "5000"))
     print("="*55)
-    print("  BlancoByte ClickHouse Console v4.0 (multi-user)")
-    print("  http://localhost:5000")
+    print(f"  BlancoByte ClickHouse Console v{APP_VERSION} (multi-user)")
+    print(f"  Build:   {BUILD_VERSION}")
+    print(f"  URL:     http://localhost:{_port}")
     print(f"  DB:      {_db_summary}")
     print(f"  License: {LICENSE['mode']}")
     print(f"  SSO:     {'on' if oidc_enabled() else 'off'}    Vault: {'on' if MASTER_KEY else 'off'}")
     print("="*55)
-    app.run(host="0.0.0.0",port=5000,debug=False,threaded=True)
+    app.run(host="0.0.0.0",port=_port,debug=False,threaded=True)
