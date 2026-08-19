@@ -10,6 +10,10 @@ server), and session management is handled by Redis.
 
 ---
 
+<img width="1327" height="797" alt="Screenshot 2026-08-19 at 22 25 31" src="https://github.com/user-attachments/assets/b47078c0-8dda-404a-bc81-b60c13f97dd0" />
+
+<img width="1327" height="797" alt="Screenshot 2026-08-19 at 22 25 06" src="https://github.com/user-attachments/assets/35f4fa31-5088-4d07-a5fb-42570162a5bc" />
+
 ## Community vs Enterprise
 
 The Community Edition includes the **full feature set** — SQL workbench,
